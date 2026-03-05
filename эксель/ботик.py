@@ -32,7 +32,7 @@ async def custom_command_handler(update: Update, context: ContextTypes.DEFAULT_T
 
         command = message[3:].strip().lower()
         
-        if command == "хуй":
+        if command == "хуй1":
             sticker_file_id = "CAACAgIAAxkBAAECgzRppxgMyw2pRRTuQE2ewtzhA2EDwwACFmkAAo7ZyEjGsk1U4P9r4zoE"
             await context.bot.send_message(chat_id=chat.id, text="хуй")
             await context.bot.send_sticker(chat_id=chat.id, sticker=sticker_file_id)
