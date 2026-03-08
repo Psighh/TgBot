@@ -116,7 +116,6 @@ async def get_rule34_post(update: Update, tags: str, context: ContextTypes.DEFAU
 
     session = context.bot_data.get('http_session')
     if not session:
-        # Страховка на случай, если сессия не создалась
         await wait_message.edit_text("🚨 Ошибка: HTTP-сессия не инициализирована.")
         return
 
@@ -200,8 +199,14 @@ async def post_init(application: Application):
     application.bot_data['http_session'] = aiohttp.ClientSession()
     print("🌐 Единая HTTP-сессия создана")
 
+async def post_shutdown(application: Application):
+    session = application.bot_data.get('http_session')
+    if session:
+        await session.close()
+        print("🌐 Сессия закрыта, бот спит крепко.")
+
 def main():
-    app = Application.builder().token(TOKEN).post_init(post_init).build()
+    app = Application.builder().token(TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
 
     app.add_handler(MessageHandler(filters.TEXT | filters.Sticker.ALL, custom_command_handler))
     

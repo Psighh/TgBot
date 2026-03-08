@@ -12,6 +12,10 @@
     <OutputPath>.</OutputPath>
     <Name>ТГбот</Name>
     <RootNamespace>эксель</RootNamespace>
+    <LaunchProvider>Standard Python launcher</LaunchProvider>
+    <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
+    <Environment>
+</Environment>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
