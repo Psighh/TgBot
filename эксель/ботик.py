@@ -1,13 +1,10 @@
 ﻿import asyncio
-from doctest import master
-from telegram import Update
+from telegram import Update, ReactionTypeEmoji
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import time
 from datetime import datetime, timedelta
 import random
 import aiohttp
 import logging
-from telegram import ReactionTypeEmoji
 import json
 from datetime import date
 
@@ -57,14 +54,14 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not tags:
             await update.message.reply_text("❌ Введите теги!")
             return
-        await get_rule34_post(update, tags)
+        await get_rule34_post(update, tags, context)
 
     elif command.startswith("погода"):
         city = command[6:].strip()
         if not city:
             await update.message.reply_text("❌ Введите город!")
             return
-        await get_weather(update, city)
+        await get_weather(update, city, context)
 
     else:
         await context.bot.send_message(chat_id=chat_id, text=f"Неизвестная команда: {command}")
@@ -93,7 +90,7 @@ def is_message_old(update: Update, seconds=10) -> bool:
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Ошибка: {context.error}")
 
-async def get_rule34_post(update: Update, tags: str):
+async def get_rule34_post(update: Update, tags: str, context: ContextTypes.DEFAULT_TYPE):
     global total_requests_count, current_day
     
     USER_ID = "6008643"
@@ -117,6 +114,12 @@ async def get_rule34_post(update: Update, tags: str):
         f"🔍 Ищу: {tags}... ({total_requests_count + 1}/{MAX_DAILY_LIMIT})"
     )
 
+    session = context.bot_data.get('http_session')
+    if not session:
+        # Страховка на случай, если сессия не создалась
+        await wait_message.edit_text("🚨 Ошибка: HTTP-сессия не инициализирована.")
+        return
+
     try:
         api_url = "https://api.rule34.xxx/index.php"
         params = {
@@ -125,13 +128,11 @@ async def get_rule34_post(update: Update, tags: str):
             "user_id": USER_ID, "api_key": API_KEY
         }
         
-        async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
-            async with session.get(api_url, params=params, timeout=15) as resp:
+        async with session.get(api_url, params=params, timeout=15) as resp:
                 raw_text = await resp.text()
                 posts = []
 
                 if raw_text.strip().startswith("["):
-                    import json
                     posts = json.loads(raw_text)
                 elif "<?xml" in raw_text or "<posts" in raw_text:
                     import xml.etree.ElementTree as ET
@@ -140,7 +141,6 @@ async def get_rule34_post(update: Update, tags: str):
                         posts.append({'file_url': child.get('file_url'), 'id': child.get('id')})
 
                 if posts:
-                    import random
                     post = random.choice(posts)
                     image_url = post.get("file_url")
                     if image_url and image_url.startswith("//"):
@@ -161,24 +161,25 @@ async def get_rule34_post(update: Update, tags: str):
         print(f"ОШИБКА: {e}")
         await wait_message.edit_text("🚨 Ошибка при поиске.")
 
-async def get_weather(update: Update, city: str):
+async def get_weather(update: Update, city: str, context: ContextTypes.DEFAULT_TYPE):
     weather_api_key = "517f0dffb88450251a36c1ebcad986ef"
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={weather_api_key}&units=metric&lang=ru"
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    
-                    city_name = data["name"]
-                    temp = data["main"]["temp"]
-                    feels_like = data["main"]["feels_like"]
-                    description = data["weather"][0]["description"]
-                    humidity = data["main"]["humidity"]
-                    wind_speed = data["wind"]["speed"]
 
-                    text = (
+    session = context.bot_data['http_session']
+
+    try:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                    
+                city_name = data["name"]
+                temp = data["main"]["temp"]
+                feels_like = data["main"]["feels_like"]
+                description = data["weather"][0]["description"]
+                humidity = data["main"]["humidity"]
+                wind_speed = data["wind"]["speed"]
+
+                text = (
                         f"🌍 **Погода в городе {city_name}**\n"
                         f"🌡 Температура: {temp}°C\n"
                         f"🤔 Ощущается как: {feels_like}°C\n"
@@ -186,22 +187,23 @@ async def get_weather(update: Update, city: str):
                         f"💧 Влажность: {humidity}%\n"
                         f"💨 Ветер: {wind_speed} м/с"
                     )
-                    await update.message.reply_text(text, parse_mode="Markdown")
-                elif resp.status == 404:
-                    await update.message.reply_text(f"❌ Город `{city}` не найден.")
-                else:
-                    await update.message.reply_text("❌ Ошибка при запросе к сервису погоды.")
+                await update.message.reply_text(text, parse_mode="Markdown")
+            elif resp.status == 404:
+                await update.message.reply_text(f"❌ Город `{city}` не найден.")
+            else:
+                await update.message.reply_text("❌ Ошибка при запросе к сервису погоды.")
     except Exception as e:
         logger.error(f"Weather error: {e}")
         await update.message.reply_text("🚨 Произошла ошибка при получении погоды.")
 
+async def post_init(application: Application):
+    application.bot_data['http_session'] = aiohttp.ClientSession()
+    print("🌐 Единая HTTP-сессия создана")
 
 def main():
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).post_init(post_init).build()
 
     app.add_handler(MessageHandler(filters.TEXT | filters.Sticker.ALL, custom_command_handler))
-    
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_command_handler))
     
     app.add_error_handler(error_handler)
 
