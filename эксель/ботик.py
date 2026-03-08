@@ -21,83 +21,73 @@ logger = logging.getLogger(__name__)
 TOKEN = "8191607797:AAEC7N4SlC2mIZcuCWBKgKgAstGK1uSQ97k"
 
 async def custom_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.message.sticker:
+        await handle_sticker_reactions(update, context)
+        return
+
+    if not update.message.text or is_message_old(update):
+        return
+
     message = update.message.text
     chat = update.effective_chat
     message_date = update.message.date 
     
-    # Игнорируем сообщения старше 10 секунд
-    if datetime.now(message_date.tzinfo) - message_date > timedelta(seconds=10):
-        print(f"Игнорирую старое сообщение от {message_date}")
-        return
-
     print(f"Получено сообщение из чата: {chat.id}, тип: {chat.type}, текст: {message}")
     
     if not message:
         return
     
     if message.lower().startswith("гв "):
+        await process_gv_commands(update, context, message[3:].strip().lower())
 
-        command = message[3:].strip().lower()
-        
-        if command == "хуй":
-            sticker_file_id = "CAACAgIAAxkBAAECgzRppxgMyw2pRRTuQE2ewtzhA2EDwwACFmkAAo7ZyEjGsk1U4P9r4zoE"
-            await context.bot.send_message(chat_id=chat.id, text="хуй")
-            await context.bot.send_sticker(chat_id=chat.id, sticker=sticker_file_id)
-        elif command == "блядища":
-            wait_message = await update.message.reply_text("🔄 Загружаю 18+ арт...")
-            
-            image_url = None
-            caption = "🔞 представляю твою сладкую чиксу"
-            
-            try:
-                async with aiohttp.ClientSession(headers={"User-Agent": "TelegramBot/1.0"}) as session:
-                    async with session.get("https://api.waifu.pics/nsfw/waifu", timeout=10) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            image_url = data.get("url")
-                        else:
-                            logger.error(f"waifu.pics вернул статус {resp.status}")
-                            await wait_message.edit_text(f"❌ Ошибка API: {resp.status}")
-                            return
-            except asyncio.TimeoutError:
-                logger.error("Таймаут при запросе к waifu.pics")
-                await wait_message.edit_text("❌ Превышено время ожидания")
-                return
-            except Exception as e:
-                logger.error(f"Ошибка при запросе: {e}")
-                await wait_message.edit_text("❌ Произошла неизвестная ошибка")
-                return
-            
-            if image_url:
-                try:
-                    await update.message.reply_photo(photo=image_url, caption=caption)
-                    await wait_message.delete()
-                except Exception as e:
-                    logger.error(f"Ошибка отправки фото: {e}")
-                    await wait_message.edit_text("❌ Не удалось отправить изображение")
-            else:
-                await wait_message.edit_text("❌ Не удалось получить ссылку на изображение")
-        elif command == "кастом":
-            #await context.bot.send_sticker(chat_id=-1002380022509, sticker="CAACAgIAAxkBAAECjCNpqa0kWKUoLpLXV7xT_5CTkt3HqAACq5kAAvVF6EulQMuOfO7aBToE")
-            await context.bot.send_message(chat_id=-1002380022509, text="") #-5160768325
-            await context.bot.send_photo(chat_id=-1002380022509, photo="")
-            # try:
-            #     await context.bot.set_message_reaction(
-            #         chat_id=-1002380022509,
-            #         message_id=50486,
-            #         reaction=[ReactionTypeEmoji("💩")]
-            #     )
-            #     print('Лайк поставлен!')
-            # except Exception as e:
-            #     logger.error(f"Ошибка при установке реакции: {e}")
-        elif command.startswith("рул"):
-            tags = command[3:].strip().replace(" ", "_").lower()
-            if not tags:
-                await update.message.reply_text("❌ Введите теги!")
-                return
-            await get_rule34_post(update, tags)
-        else:
-            await context.bot.send_message(chat_id=chat.id, text=f"Неизвестная команда: {command}")
+async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE, command: str):
+    chat_id = update.effective_chat.id
+
+    if command == "хуй":
+        sticker_id = "CAACAgIAAxkBAAECgzRppxgMyw2pRRTuQE2ewtzhA2EDwwACFmkAAo7ZyEjGsk1U4P9r4zoE"
+        await context.bot.send_message(chat_id=chat_id, text="хуй")
+        await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_id)
+
+    elif command == "кастом":
+        await context.bot.send_message(chat_id=-5160768325, text="Ничего не делаю") #-1002380022509
+
+    elif command.startswith("рул"):
+        tags = command[3:].strip().replace(" ", "_")
+        if not tags:
+            await update.message.reply_text("❌ Введите теги!")
+            return
+        await get_rule34_post(update, tags)
+
+    elif command.startswith("погода"):
+        city = command[6:].strip()
+        if not city:
+            await update.message.reply_text("❌ Введите город!")
+            return
+        await get_weather(update, city)
+
+    else:
+        await context.bot.send_message(chat_id=chat_id, text=f"Неизвестная команда: {command}")
+
+async def handle_sticker_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    target_id = "CAACAgIAAxkBAAIB0GmprRn4W6u5b92a222Lm5mOPYPLAAKrmQAC9UXoS6VAy4587toFOgQ"
+    
+    if update.message.sticker.file_id == target_id:
+        try:
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[ReactionTypeEmoji("❤️")]
+            )
+        except Exception as e:
+            logger.error(f"Ошибка реакции: {e}")
+
+def is_message_old(update: Update, seconds=10) -> bool:
+    message_date = update.message.date
+    if datetime.now(message_date.tzinfo) - message_date > timedelta(seconds=seconds):
+        print(f"Игнорирую старое сообщение от {message_date}")
+        return True
+    return False
     
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,7 +96,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_rule34_post(update: Update, tags: str):
     global total_requests_count, current_day
     
-    # Константы (можно вынести в начало файла)
     USER_ID = "6008643"
     API_KEY = "f3c359dc8d4921981db6be0d99f7cd3eeb298baede968b20f7b2c188bf72d03c77dadb06739e78ffbfb1b1e88061d3b713ae900d8daad6d322740c3e20d179b8"
     MAX_DAILY_LIMIT = 5
@@ -172,8 +161,45 @@ async def get_rule34_post(update: Update, tags: str):
         print(f"ОШИБКА: {e}")
         await wait_message.edit_text("🚨 Ошибка при поиске.")
 
+async def get_weather(update: Update, city: str):
+    weather_api_key = "517f0dffb88450251a36c1ebcad986ef"
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={weather_api_key}&units=metric&lang=ru"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    
+                    city_name = data["name"]
+                    temp = data["main"]["temp"]
+                    feels_like = data["main"]["feels_like"]
+                    description = data["weather"][0]["description"]
+                    humidity = data["main"]["humidity"]
+                    wind_speed = data["wind"]["speed"]
+
+                    text = (
+                        f"🌍 **Погода в городе {city_name}**\n"
+                        f"🌡 Температура: {temp}°C\n"
+                        f"🤔 Ощущается как: {feels_like}°C\n"
+                        f"☁️ Описание: {description.capitalize()}\n"
+                        f"💧 Влажность: {humidity}%\n"
+                        f"💨 Ветер: {wind_speed} м/с"
+                    )
+                    await update.message.reply_text(text, parse_mode="Markdown")
+                elif resp.status == 404:
+                    await update.message.reply_text(f"❌ Город `{city}` не найден.")
+                else:
+                    await update.message.reply_text("❌ Ошибка при запросе к сервису погоды.")
+    except Exception as e:
+        logger.error(f"Weather error: {e}")
+        await update.message.reply_text("🚨 Произошла ошибка при получении погоды.")
+
+
 def main():
     app = Application.builder().token(TOKEN).build()
+
+    app.add_handler(MessageHandler(filters.TEXT | filters.Sticker.ALL, custom_command_handler))
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_command_handler))
     
