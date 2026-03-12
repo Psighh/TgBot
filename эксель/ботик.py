@@ -29,6 +29,10 @@ async def custom_command_handler(update: Update, context: ContextTypes.DEFAULT_T
     if not update.message.text or is_message_old(update):
         return
 
+    pool = context.bot_data.get('db_pool')
+    if pool:
+        await give_mmr(pool, update.effective_user.id, 1)
+
     message = update.message.text
     chat = update.effective_chat
     message_date = update.message.date 
@@ -89,9 +93,64 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         parse_mode = "Markdown" if success else None
         await update.message.reply_text(response_text, parse_mode=parse_mode)
+    elif command == "инфа":
+        pool = context.bot_data.get('db_pool')
+        if not pool:
+            await update.message.reply_text("🚨 Ошибка: База данных не подключена.")
+            return
 
+        success, response_text = await get_user_info(pool, update.effective_user.id)
+        await update.message.reply_text(response_text, parse_mode="Markdown")
+    elif command == "топ":
+        pool = context.bot_data.get('db_pool')
+        if not pool:
+            await update.message.reply_text("🚨 Ошибка: База данных не подключена.")
+            return
+        
+        response_text = await get_top_users(pool)
+        await update.message.reply_text(response_text, parse_mode="Markdown", disable_web_page_preview=True)
     else:
         await context.bot.send_message(chat_id=chat_id, text=f"Неизвестная команда: {command}")
+
+async def give_mmr(pool, user_id: int, amount: int = 1):
+    try:
+        async with pool.acquire() as conn:
+            status = await conn.execute("""
+                UPDATE users 
+                SET rating = rating + $1 
+                WHERE user_id = $2
+            """, amount, user_id)
+            
+            return status == "UPDATE 1"
+    except Exception as e:
+        logger.error(f"Ошибка при начислении MMR: {e}")
+        return False
+
+async def get_top_users(pool):
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT user_id, custom_nickname, rang, rating 
+                FROM users 
+                ORDER BY rating DESC 
+                LIMIT 10
+            """)
+
+            if not rows:
+                return "📈 Список пуст. Никто еще не зарегистрировался!"
+
+            text = "🏆 **Топ пользователей по рейтингу:**\n\n"
+            
+            for i, row in enumerate(rows, start=1):
+                user_link = f"[{row['custom_nickname']}](tg://user?id={row['user_id']})"
+                
+                text += f"{i}. {user_link} [[{row['rang']}]] — {row['rating']} ммр.\n"
+            
+            return text
+
+    except Exception as e:
+        logger.error(f"Ошибка в get_top_users: {e}")
+        return "🚨 Произошла ошибка при получении списка лидеров."
 
 async def handle_sticker_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = "CAACAgIAAxkBAAIB0GmprRn4W6u5b92a222Lm5mOPYPLAAKrmQAC9UXoS6VAy4587toFOgQ"
@@ -105,6 +164,35 @@ async def handle_sticker_reactions(update: Update, context: ContextTypes.DEFAULT
             )
         except Exception as e:
             logger.error(f"Ошибка реакции: {e}")
+
+async def get_user_info(pool, user_id: int):
+    try:
+        async with pool.acquire() as conn:
+            user_data = await conn.fetchrow("""
+                SELECT custom_nickname, rang, rating, registered_at 
+                FROM users 
+                WHERE user_id = $1
+            """, user_id)
+
+            if not user_data:
+                return False, "⚠️ Ты еще не зарегистрирован! Используй: гв рег (ник)"
+
+            # Форматируем дату (если она есть)
+            reg_date = user_data['registered_at']
+            reg_date_str = reg_date.strftime("%d.%m.%Y") if reg_date else "Неизвестно"
+            user_link = f"[{user_data['custom_nickname']}](tg://user?id={user_id})"
+            info_text = (
+                f"👤 **Твой профиль:**\n"
+                f"🏷 **Ник:** {user_link}\n"
+                f"🎖 **Ранг:** {user_data['rang']}\n"
+                f"🏆 **Рейтинг:** {user_data['rating']} ммр.\n"
+                f"📅 **Дата регистрации:** {reg_date_str}"
+            )
+            return True, info_text
+
+    except Exception as e:
+        logger.error(f"Ошибка в get_user_info: {e}")
+        return False, "🚨 Произошла ошибка при получении данных из базы."
 
 def is_message_old(update: Update, seconds=10) -> bool:
     message_date = update.message.date
@@ -122,12 +210,10 @@ async def register_user(pool, user, nickname: str):
 
     try:
         async with pool.acquire() as conn:
-            # 1. Проверяем наличие пользователя
             existing = await conn.fetchrow("SELECT user_id FROM users WHERE user_id = $1", user.id)
             if existing:
                 return False, "✨ Ты уже зарегистрирован в боте!"
 
-            # 2. Регистрация
             username = f"@{user.username}" if user.username else "NoUsername"
             await conn.execute("""
                 INSERT INTO users (user_id, username, custom_nickname)
@@ -144,7 +230,7 @@ async def register_user(pool, user, nickname: str):
             
 async def update_nickname(pool, user_id: int, new_nickname: str):
     if not new_nickname:
-        return False, "❌ Введи новый ник! Пример: `гв ник Нагибатор3000`"
+        return False, "❌ Введи новый ник! Пример: гв ник дрочила228"
 
     if len(new_nickname) > 100:
         return False, "❌ Слишком длинный никнейм (макс. 100 символов)."
@@ -154,7 +240,7 @@ async def update_nickname(pool, user_id: int, new_nickname: str):
             existing = await conn.fetchrow("SELECT custom_nickname FROM users WHERE user_id = $1", user_id)
             
             if not existing:
-                return False, "⚠️ Ты еще не зарегистрирован! Сначала используй команду `гв рег (ник)`"
+                return False, "⚠️ Ты еще не зарегистрирован! Сначала используй команду гв рег (ник)"
 
             await conn.execute("""
                 UPDATE users 
@@ -296,7 +382,6 @@ def main():
     
     app.add_error_handler(error_handler)
 
-    # Запускаем бота
     print("Бот запущен...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
