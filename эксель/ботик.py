@@ -31,7 +31,13 @@ async def custom_command_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     pool = context.bot_data.get('db_pool')
     if pool:
-        await give_mmr(pool, update.effective_user.id, 1)
+        await give_mmr(
+            pool, 
+            update.effective_user.id, 
+            context, 
+            update.effective_chat.id, 
+            1
+        )
 
     message = update.message.text
     chat = update.effective_chat
@@ -54,7 +60,9 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
         await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_id)
 
     elif command == "кастом":
-        await context.bot.send_message(chat_id=-5160768325, text="Ничего не делаю") #-1002380022509
+        sticker_id = "CAACAgIAAxkBAAECqyVpsyLE9BVggzEPYwRTVaBfsceDGQACwGcAAuu_kEgISLE2EPhp8ToE"
+        await context.bot.send_message(chat_id=-5160768325, text="📢 С данного момента бот активен 24/7\n☑️ Просьба пройти регистрацию с помощью Гв рег (ник)\n❗️ Без регистрации вам не доступно:\n- 🏆 Система рангов\n- 🇬🇹 Гражданство гватемалы\n- ❌ Вас не будет в топе пользователей (Гв топ)") #-1002380022509
+        await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_id)
 
     elif command.startswith("рул"):
         tags = command[3:].strip().replace(" ", "_")
@@ -93,7 +101,7 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         parse_mode = "Markdown" if success else None
         await update.message.reply_text(response_text, parse_mode=parse_mode)
-    elif command == "инфа":
+    elif command in ['инфа','инфо']:
         pool = context.bot_data.get('db_pool')
         if not pool:
             await update.message.reply_text("🚨 Ошибка: База данных не подключена.")
@@ -112,18 +120,121 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         await context.bot.send_message(chat_id=chat_id, text=f"Неизвестная команда: {command}")
 
-async def give_mmr(pool, user_id: int, amount: int = 1):
+def calculate_rang(mmr: int) -> str:
+    if mmr < 50:
+        return "Рекрут I"
+    elif mmr < 100:
+        return "Рекрут II"
+    elif mmr < 150:
+        return "Рекрут III"
+    elif mmr < 200:
+        return "Рекрут IV"
+    elif mmr < 250:
+        return "Рекрут V"
+  
+    elif mmr < 300:
+        return "Страж I"
+    elif mmr < 375:
+        return "Страж II"
+    elif mmr < 450:
+        return "Страж III"
+    elif mmr < 525:
+        return "Страж IV"
+    elif mmr < 600:
+        return "Страж V"
+
+    elif mmr < 700:
+        return "Рыцарь I"
+    elif mmr < 800:
+        return "Рыцарь II"
+    elif mmr < 900:
+        return "Рыцарь III"
+    elif mmr < 1000:
+        return "Рыцарь IV"
+    elif mmr < 1100:
+        return "Рыцарь V"
+
+    elif mmr < 1200:
+        return "Герой I"
+    elif mmr < 1300:
+        return "Герой II"
+    elif mmr < 1400:
+        return "Герой III"
+    elif mmr < 1500:
+        return "Герой IV"
+    elif mmr < 1600:
+        return "Герой V"
+
+    elif mmr < 1700:
+        return "Легенда I"
+    elif mmr < 1800:
+        return "Легенда II"
+    elif mmr < 1900:
+        return "Легенда III"
+    elif mmr < 2000:
+        return "Легенда IV"
+    elif mmr < 2100:
+        return "Легенда V"
+
+    elif mmr < 2200:
+        return "Властелин I"
+    elif mmr < 2300:
+        return "Властелин II"
+    elif mmr < 2400:
+        return "Властелин III"
+    elif mmr < 2500:
+        return "Властелин IV"
+    elif mmr < 2600:
+        return "Властелин V"
+
+    elif mmr < 2800:
+        return "Божество I"
+    elif mmr < 3000:
+        return "Божество II"
+    elif mmr < 3200:
+        return "Божество III"
+    elif mmr < 3400:
+        return "Божество IV"
+    elif mmr < 3600:
+        return "Божество V"
+
+    else:
+        return "Титан"
+
+async def give_mmr(pool, user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_id: int, amount: int = 1):
     try:
         async with pool.acquire() as conn:
-            status = await conn.execute("""
-                UPDATE users 
-                SET rating = rating + $1 
-                WHERE user_id = $2
-            """, amount, user_id)
+            current_data = await conn.fetchrow(
+                "SELECT rating, rang, custom_nickname FROM users WHERE user_id = $1", 
+                user_id
+            )
             
-            return status == "UPDATE 1"
+            if not current_data:
+                return False
+
+            old_rang = current_data['rang']
+            new_mmr = int(current_data['rating']) + amount
+            new_rang = calculate_rang(new_mmr)
+            nickname = current_data['custom_nickname']
+
+            await conn.execute("""
+                UPDATE users 
+                SET rating = $1, rang = $2 
+                WHERE user_id = $3
+            """, new_mmr, new_rang, user_id)
+            
+            if old_rang != new_rang:
+                user_link = f"[{nickname}](tg://user?id={user_id})"
+                congrats_text = (
+                    f"🎉 **Повышение!**\n"
+                    f"🎖 {user_link}, твой ранг теперь: **{new_rang}**!\n"
+                    f"📈 Текущий рейтинг: {new_mmr} ммр."
+                )
+                await context.bot.send_message(chat_id=chat_id, text=congrats_text, parse_mode="Markdown")
+
+            return True
     except Exception as e:
-        logger.error(f"Ошибка при начислении MMR: {e}")
+        logger.error(f"Ошибка в give_mmr: {e}")
         return False
 
 async def get_top_users(pool):
