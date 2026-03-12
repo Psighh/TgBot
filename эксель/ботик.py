@@ -1,4 +1,5 @@
 ﻿import asyncio
+import asyncpg
 from telegram import Update, ReactionTypeEmoji
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from datetime import datetime, timedelta
@@ -7,6 +8,8 @@ import aiohttp
 import logging
 import json
 from datetime import date
+
+DB_CONFIG = "postgresql://postgres:123123@localhost:5432/postgres"
 
 total_requests_count = 0
 current_day = date.today()
@@ -62,6 +65,30 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("❌ Введите город!")
             return
         await get_weather(update, city, context)
+    elif command.startswith("рег"):
+        new_nickname = command[3:].strip()
+        pool = context.bot_data.get('db_pool')
+
+        if not pool:
+            await update.message.reply_text("🚨 Ошибка: База данных не подключена.")
+            return
+
+        success, response_text = await register_user(pool, update.effective_user, new_nickname)
+        
+        parse_mode = "Markdown" if success or "Пример" in response_text else None
+        await update.message.reply_text(response_text, parse_mode=parse_mode)
+    elif command.startswith("ник"):
+        new_nickname = command[3:].strip()
+        pool = context.bot_data.get('db_pool')
+
+        if not pool:
+            await update.message.reply_text("🚨 Ошибка: База данных не подключена.")
+            return
+
+        success, response_text = await update_nickname(pool, update.effective_user.id, new_nickname)
+        
+        parse_mode = "Markdown" if success else None
+        await update.message.reply_text(response_text, parse_mode=parse_mode)
 
     else:
         await context.bot.send_message(chat_id=chat_id, text=f"Неизвестная команда: {command}")
@@ -86,6 +113,61 @@ def is_message_old(update: Update, seconds=10) -> bool:
         return True
     return False
     
+async def register_user(pool, user, nickname: str):
+    if not nickname:
+        return False, "❌ Введи ник! напрмер: адскийДрочила228"
+
+    if len(nickname) > 100:
+        return False, "❌ Слишком длинный никнейм"
+
+    try:
+        async with pool.acquire() as conn:
+            # 1. Проверяем наличие пользователя
+            existing = await conn.fetchrow("SELECT user_id FROM users WHERE user_id = $1", user.id)
+            if existing:
+                return False, "✨ Ты уже зарегистрирован в боте!"
+
+            # 2. Регистрация
+            username = f"@{user.username}" if user.username else "NoUsername"
+            await conn.execute("""
+                INSERT INTO users (user_id, username, custom_nickname)
+                VALUES ($1, $2, $3)
+            """, user.id, username, nickname)
+            
+            user_link = f"[{nickname}](tg://user?id={user.id})"
+            
+            return True, f"✅ Регистрация прошла успешно, {user_link}! \nТвои данные переданы в пентагон."
+            
+    except Exception as e:
+        logger.error(f"Ошибка в register_user: {e}")
+        return False, "🚨 Произошла ошибка при попытке занести тебя в списки."
+            
+async def update_nickname(pool, user_id: int, new_nickname: str):
+    if not new_nickname:
+        return False, "❌ Введи новый ник! Пример: `гв ник Нагибатор3000`"
+
+    if len(new_nickname) > 100:
+        return False, "❌ Слишком длинный никнейм (макс. 100 символов)."
+
+    try:
+        async with pool.acquire() as conn:
+            existing = await conn.fetchrow("SELECT custom_nickname FROM users WHERE user_id = $1", user_id)
+            
+            if not existing:
+                return False, "⚠️ Ты еще не зарегистрирован! Сначала используй команду `гв рег (ник)`"
+
+            await conn.execute("""
+                UPDATE users 
+                SET custom_nickname = $1 
+                WHERE user_id = $2
+            """, new_nickname, user_id)
+            
+            user_link = f"[{new_nickname}](tg://user?id={user_id})"
+            return True, f"✅ Ник успешно изменен! Теперь ты {user_link}."
+            
+    except Exception as e:
+        logger.error(f"Ошибка в update_nickname: {e}")
+        return False, "🚨 Произошла ошибка при смене ника."
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Ошибка: {context.error}")
@@ -97,13 +179,11 @@ async def get_rule34_post(update: Update, tags: str, context: ContextTypes.DEFAU
     API_KEY = "f3c359dc8d4921981db6be0d99f7cd3eeb298baede968b20f7b2c188bf72d03c77dadb06739e78ffbfb1b1e88061d3b713ae900d8daad6d322740c3e20d179b8"
     MAX_DAILY_LIMIT = 5
 
-    # 1. Проверка на новый день
     today = date.today()
     if today != current_day:
         total_requests_count = 0
         current_day = today
 
-    # 2. Проверка лимита
     if total_requests_count >= MAX_DAILY_LIMIT:
         await update.message.reply_text(
             f"🛑 Лимит исчерпан ({total_requests_count}/{MAX_DAILY_LIMIT}). Завтра обновится!"
@@ -198,12 +278,16 @@ async def get_weather(update: Update, city: str, context: ContextTypes.DEFAULT_T
 async def post_init(application: Application):
     application.bot_data['http_session'] = aiohttp.ClientSession()
     print("🌐 Единая HTTP-сессия создана")
+    application.bot_data['db_pool'] = await asyncpg.create_pool(DB_CONFIG)
+    print("🐘 Пул PostgreSQL инициализирован")
 
 async def post_shutdown(application: Application):
     session = application.bot_data.get('http_session')
     if session:
         await session.close()
         print("🌐 Сессия закрыта, бот спит крепко.")
+    pool = application.bot_data.get('db_pool')
+    if pool: await pool.close()
 
 def main():
     app = Application.builder().token(TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
