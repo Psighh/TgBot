@@ -5,7 +5,7 @@
     <ProjectGuid>96287bf6-8821-48b0-8a4e-69b130806561</ProjectGuid>
     <ProjectHome>
     </ProjectHome>
-    <StartupFile>ботик.py</StartupFile>
+    <StartupFile>main.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -15,7 +15,7 @@
     <LaunchProvider>Standard Python launcher</LaunchProvider>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
     <Environment>
-</Environment>
+    </Environment>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -26,7 +26,13 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="ботик.py" />
+    <Compile Include="config.py" />
+    <Compile Include="database.py" />
+    <Compile Include="handlers.py" />
+    <Compile Include="main.py" />
+    <Compile Include="network.py" />
+    <Compile Include="services.py" />
+    <Compile Include="utils.py" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
