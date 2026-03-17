@@ -59,10 +59,10 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
         await context.bot.send_message(chat_id=chat_id, text="хуй")
         await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_id)
 
-    elif command == "кастом":
-        sticker_id = "CAACAgIAAxkBAAECqyVpsyLE9BVggzEPYwRTVaBfsceDGQACwGcAAuu_kEgISLE2EPhp8ToE"
-        await context.bot.send_message(chat_id=-5160768325, text="📢 С данного момента бот активен 24/7\n☑️ Просьба пройти регистрацию с помощью Гв рег (ник)\n❗️ Без регистрации вам не доступно:\n- 🏆 Система рангов\n- 🇬🇹 Гражданство гватемалы\n- ❌ Вас не будет в топе пользователей (Гв топ)") #-1002380022509
-        await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_id)
+    # elif command == "кастом":
+    #     sticker_id = "CAACAgIAAxkBAAECqyVpsyLE9BVggzEPYwRTVaBfsceDGQACwGcAAuu_kEgISLE2EPhp8ToE"
+    #     #await context.bot.send_message(chat_id=-1002380022509, text="⚠️Объявление!⚠️\n📢 С данного момента бот активен 24/7\n☑️ Просьба пройти регистрацию с помощью Гв рег (ник)\n❗️ Без регистрации вам не доступно:\n- 🏆 Система рангов\n- 🇬🇹 Гражданство гватемалы\n- ❌ Вас не будет в топе пользователей (Гв топ)\n🤔 Ошиблись с ником - гв ник (новый ник)") #-1002380022509
+    #     await context.bot.send_sticker(chat_id=-1002380022509, sticker=sticker_id)
 
     elif command.startswith("рул"):
         tags = command[3:].strip().replace(" ", "_")
