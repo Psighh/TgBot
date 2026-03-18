@@ -82,3 +82,8 @@ async def get_user_info(pool, user_id: int):
             return True, info_text
     except Exception as e:
         return False, "🚨 Произошла ошибка при получении данных из базы."
+
+async def get_nickname(pool, user_id: int):
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT custom_nickname FROM users WHERE user_id = $1", user_id)
+        return row['custom_nickname'] if row else None

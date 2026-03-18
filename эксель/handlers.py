@@ -25,6 +25,7 @@ async def custom_command_handler(update: Update, context: ContextTypes.DEFAULT_T
 async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE, command: str):
     chat_id = update.effective_chat.id
     pool = context.bot_data.get('db_pool')
+    user = update.effective_user
 
     if command == "хуй":
         await context.bot.send_message(chat_id=chat_id, text="хуй")
@@ -47,6 +48,8 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif command == "топ":
         res = await db.get_top_users(pool)
         await update.message.reply_text(res, parse_mode="Markdown", disable_web_page_preview=True)
+    elif command in ['секс', 'выебать', 'порно']:
+        await services.handle_intim_command(update, pool)
 
 async def handle_sticker_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.sticker.file_id == "CAACAgIAAxkBAAIB0GmprRn4W6u5b92a222Lm5mOPYPLAAKrmQAC9UXoS6VAy4587toFOgQ":

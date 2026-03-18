@@ -4,6 +4,7 @@ import logging
 import xml.etree.ElementTree as ET
 from datetime import date
 from config import R34_USER_ID, R34_API_KEY, WEATHER_API_KEY, MAX_DAILY_LIMIT
+import database as db
 
 logger = logging.getLogger(__name__)
 total_requests_count = 0
@@ -73,3 +74,37 @@ async def get_weather(update, city: str, context):
                 await update.message.reply_text("❌ Ошибка при запросе к сервису погоды.")
     except Exception as e:
         await update.message.reply_text("🚨 Произошла ошибка при получении погоды.")
+
+async def handle_intim_command(update, pool):
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ Эту команду нужно использовать в ответ на чье-то сообщение!")
+        return
+
+    user = update.effective_user
+    target_user = update.message.reply_to_message.from_user
+
+    if user.id == target_user.id:
+        await update.message.reply_text("🤔 Самолайк не считается.")
+        return
+
+    sender_nick = await db.get_nickname(pool, user.id)
+    target_nick = await db.get_nickname(pool, target_user.id)
+
+    if not sender_nick:
+        await update.message.reply_text("⚠️ Ты еще не зарегистрирован! Используй: `гв рег (ник)`")
+        return
+
+    final_target_name = target_nick if target_nick else target_user.first_name
+    
+    sender_link = f"[{sender_nick}](tg://user?id={user.id})"
+    target_link = f"[{final_target_name}](tg://user?id={target_user.id})"
+
+    intim_text=['сделал(а) королевский минет пользователю',
+                'сладко трахнул(а) во все дырочки пользователя',
+                'смачно отсосал(а) пользователю',
+                'отымел пальчиками пользователя',
+                'занялся жарким сексом с',
+                'легонько погладил пузико пользователю']
+
+    text = f"👄 {sender_link} {random.choice(intim_text)} {target_link}! ✨"
+    await update.message.reply_text(text, parse_mode="Markdown")
