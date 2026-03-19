@@ -1,5 +1,6 @@
 ﻿import logging
 from utils import calculate_rang
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -131,3 +132,20 @@ async def get_all_marriages(pool):
     """
     async with pool.acquire() as conn:
         return await conn.fetch(query)
+
+async def get_r34_count(pool):
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT value_int, last_update FROM bot_settings WHERE key = 'r34_requests_count'")
+        
+        if row['last_update'] != date.today():
+            await conn.execute(
+                "UPDATE bot_settings SET value_int = 0, last_update = CURRENT_DATE WHERE key = 'r34_requests_count'"
+            )
+            return 0
+        return row['value_int']
+
+async def increment_r34_count(pool):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE bot_settings SET value_int = value_int + 1 WHERE key = 'r34_requests_count'"
+        )
