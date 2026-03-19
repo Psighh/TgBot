@@ -11,25 +11,54 @@ total_requests_count = 0
 current_day = date.today()
 
 async def get_rule34_post(update, tags: str, context):
+    user_id = update.effective_user.id
     pool = context.bot_data.get('db_pool')
-    
-    total_requests_count = await db.get_r34_count(pool)
+    session = context.bot_data.get('http_session')
 
-    if total_requests_count >= MAX_DAILY_LIMIT:
-        await update.message.reply_text(f"🛑 Лимит исчерпан ({total_requests_count}/{MAX_DAILY_LIMIT}). Завтра обновится!")
+    user_nick = await db.get_nickname(pool, user_id)
+    user_link = f"[{user_nick}](tg://user?id={user_id})"
+
+    if not user_nick:
+        await update.message.reply_text("⚠️ Ты еще не зарегистрирован!")
         return
 
-    wait_message = await update.message.reply_text(f"🔍 Ищу: {tags}... ({total_requests_count + 1}/{MAX_DAILY_LIMIT})")
-    session = context.bot_data.get('http_session')
+
+    total_requests_count = await db.get_r34_count(pool)
+    if total_requests_count >= MAX_DAILY_LIMIT:
+        await update.message.reply_text(
+            f"Общий лимит исчерпан ({total_requests_count}/{MAX_DAILY_LIMIT}).",
+            parse_mode="Markdown" 
+        )
+        return
+
+    can_use, time_left = await db.check_r34_cooldown(pool, user_id)
+    if not can_use:
+        await update.message.reply_text(
+            f"⏳ {user_link}, подожди еще {time_left} мин.",
+            parse_mode="Markdown"
+        )
+        return
+
+    wait_message = await update.message.reply_text(
+        f"🔍 Ищу: {tags}... ({total_requests_count + 1}/{MAX_DAILY_LIMIT})"
+    )
 
     try:
         params = {
-            "page": "dapi", "q": "index", "s": "post", "json": 1, 
-            "tags": tags, "limit": 50, "user_id": R34_USER_ID, "api_key": R34_API_KEY
+            "page": "dapi", 
+            "q": "index", 
+            "s": "post", 
+            "json": 1, 
+            "tags": tags, 
+            "limit": 50, 
+            "user_id": R34_USER_ID, 
+            "api_key": R34_API_KEY
         }
+        
         async with session.get("https://api.rule34.xxx/index.php", params=params, timeout=15) as resp:
             raw_text = await resp.text()
             posts = []
+            
             if raw_text.strip().startswith("["):
                 posts = json.loads(raw_text)
             elif "<?xml" in raw_text or "<posts" in raw_text:
@@ -40,24 +69,38 @@ async def get_rule34_post(update, tags: str, context):
             if posts:
                 post = random.choice(posts)
                 image_url = post.get("file_url")
-                if image_url.startswith("//"): image_url = "https:" + image_url
+                if image_url.startswith("//"): 
+                    image_url = "https:" + image_url
                 
                 await db.increment_r34_count(pool)
-                new_count = total_requests_count + 1
+                await db.update_r34_last_time(pool, user_id)
                 
-                caption = f"🔞 Тег: {tags}\n📊 Лимит: {new_count}/{MAX_DAILY_LIMIT}"
+                new_count = total_requests_count + 1
+                caption = f"{user_link}, ваш запрос по тегу {tags} \n📊 Лимит: {new_count}/{MAX_DAILY_LIMIT}"
                 
                 if any(image_url.lower().endswith(ext) for ext in ['.mp4', '.webm']):
-                    await update.message.reply_video(video=image_url, caption=caption)
+                    await update.message.reply_video(
+                        video=image_url, 
+                        caption=caption, 
+                        parse_mode="Markdown"
+                    )
                 else:
-                    await update.message.reply_photo(photo=image_url, caption=caption)
+                    await update.message.reply_photo(
+                        photo=image_url, 
+                        caption=caption, 
+                        parse_mode="Markdown"
+                    )
                 
                 await wait_message.delete()
             else:
-                await wait_message.edit_text(f"😔 По запросу `{tags}` ничего не найдено.")
+                await wait_message.edit_text(
+                    f"{user_link}, по запросу {tags} ничего не найдено.",
+                    parse_mode="Markdown"
+                )
+
     except Exception as e:
         logger.error(f"Ошибка в R34: {e}")
-        await wait_message.edit_text("Ошибка при поиске.")
+        await wait_message.edit_text("Произошла ошибка при поиске.")
 
 async def get_weather(update, city: str, context):
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
