@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from datetime import date
 from config import R34_USER_ID, R34_API_KEY, WEATHER_API_KEY, MAX_DAILY_LIMIT
 import database as db
+import html
 
 logger = logging.getLogger(__name__)
 total_requests_count = 0
@@ -71,31 +72,33 @@ async def get_rule34_post(update, tags: str, context):
                 image_url = post.get("file_url")
                 if image_url.startswith("//"): 
                     image_url = "https:" + image_url
-                
-                await db.increment_r34_count(pool)
-                await db.update_r34_last_time(pool, user_id)
-                
+                                
                 new_count = total_requests_count + 1
-                caption = f"{user_link}, ваш запрос по тегу {tags} \n📊 Лимит: {new_count}/{MAX_DAILY_LIMIT}"
-                
+                safe_tags = html.escape(tags)
+                user_link = f'<a href="tg://user?id={user_id}">{html.escape(user_nick)}</a>'
+                caption = f"{user_link}, ваш запрос по тегу <b>{safe_tags}</b>\n📊 Лимит: {new_count}/{MAX_DAILY_LIMIT}"
+
                 if any(image_url.lower().endswith(ext) for ext in ['.mp4', '.webm']):
                     await update.message.reply_video(
                         video=image_url, 
                         caption=caption, 
-                        parse_mode="Markdown"
+                        parse_mode="HTML"
                     )
                 else:
                     await update.message.reply_photo(
                         photo=image_url, 
                         caption=caption, 
-                        parse_mode="Markdown"
+                        parse_mode="HTML"
                     )
-                
+            
+                await db.increment_r34_count(pool)
+                await db.update_r34_last_time(pool, user_id)
+            
                 await wait_message.delete()
             else:
                 await wait_message.edit_text(
-                    f"{user_link}, по запросу {tags} ничего не найдено.",
-                    parse_mode="Markdown"
+                    f"{user_link}, по запросу <b>{tags}</b> ничего не найдено.",
+                    parse_mode="HTML"
                 )
 
     except Exception as e:
