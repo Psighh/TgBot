@@ -1,23 +1,36 @@
-﻿from telegram import Update, ReactionTypeEmoji
+﻿from telegram import Update, ReactionTypeEmoji, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from utils import is_message_old
 import database as db
 import services
+from config import ALLOWED_MEDICS
 
 async def custom_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message:
-        user = update.effective_user
-        chat = update.effective_chat
-        text = update.message.text or "[Стикер/Медиа]"
-        print(f"Сообщение от: {user.first_name} (ID: {user.id}) | Чат: {chat.title or 'Личка'} (ID: {chat.id}) | Текст: {text}")
+    if not update.message:
+        return
+
+    user = update.effective_user
+    chat = update.effective_chat
+    text = update.message.text or "[Стикер/Медиа]"
+    pool = context.bot_data.get('db_pool')
+
+    print(f"Сообщение от: {user.first_name} (ID: {user.id}) | Чат: {chat.title or 'Личка'} (ID: {chat.id}) | Текст: {text}")
+    
     if update.message.sticker:
         await handle_sticker_reactions(update, context)
         return
+        
     if not update.message.text or is_message_old(update):
         return
-    pool = context.bot_data.get('db_pool')
+
+    if chat.type == "private" and user.id in ALLOWED_MEDICS:
+        if await handle_medic_private_message(update, context, pool, text):
+            return
+
+    # Начисление MMR за обычные сообщения
     if pool:
         await db.give_mmr(pool, update.effective_user.id, context, update.effective_chat.id, 1)
+
     message = update.message.text
     if message.lower().startswith("гв "):
         await process_gv_commands(update, context, message[3:].strip().lower())
@@ -32,6 +45,8 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
         await context.bot.send_sticker(chat_id=chat_id, sticker="CAACAgIAAxkBAAECgzRppxgMyw2pRRTuQE2ewtzhA2EDwwACFmkAAo7ZyEjGsk1U4P9r4zoE")
     #elif command == "кастом":
     #   await context.bot.send_sticker(chat_id=-1002380022509, sticker="CAACAgIAAxkBAAECqyVpsyLE9BVggzEPYwRTVaBfsceDGQACwGcAAuu_kEgISLE2EPhp8ToE")
+    elif command.startswith("медицина"):
+        await handle_medical_question_command(update, context, pool, command)
     elif command.startswith("рул"):
         await services.get_rule34_post(update, command[3:].strip().replace(" ", "_"), context)
     elif command.startswith("погода"):
@@ -61,11 +76,215 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif command == "браки": 
         await handle_all_marriages(update, context, pool)
 
+#-------------------------------------------------Медицина----------------------------------------------------------------------
+
+async def handle_medic_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE, pool, text: str) -> bool:
+    """
+    Обрабатывает сообщения от вити в личных сообщениях.
+    Возвращает True, если сообщение было обработано и выполнение нужно прервать.
+    """
+    waiting_info = context.user_data.get('waiting_for_answer_to')
+    
+    # Если бот ожидает от медика текст ответа на вопрос
+    if waiting_info:
+        if text.strip().lower() == "отмена":
+            context.user_data.pop('waiting_for_answer_to', None)
+            await update.message.reply_text("❌ Отменено.")
+            await show_medical_question_interface(update, context, pool, current_index=waiting_info['current_index'])
+            return True
+            
+        await handle_medic_answer_text(update, context, pool, waiting_info)
+        return True
+
+    # Если медик нажимает кнопки интерфейса управления
+    if text.strip().lower() in ["/start", "вопросы"]:
+        reply_markup = ReplyKeyboardMarkup([["Вопросы"]], resize_keyboard=True)
+        if text.strip().lower() == "вопросы":
+            await show_medical_question_interface(update, context, pool)
+        else:
+            await update.message.reply_text("Нажми на кнопку «Вопросы», чтобы просмотреть очередь.", reply_markup=reply_markup)
+        return True
+
+    # Если ни одно условие не подошло (например, медик просто пишет обычный текст)
+    return False
+
+async def handle_medical_question_command(update: Update, context: ContextTypes.DEFAULT_TYPE, pool, command: str):
+    user = update.effective_user
+    question = command[8:].strip()
+    
+    if not question:
+        await update.message.reply_text("Введи вопрос!", parse_mode="Markdown")
+        return
+        
+    u_nick = await db.get_nickname(pool, user.id)
+    if not u_nick:
+        await update.message.reply_text("⚠️ Ты еще не зарегистрирован! Используй команду: `гв рег (ник)`", parse_mode="Markdown")
+        return
+
+    if await db.is_medical_banned(pool, user.id):
+        await update.message.reply_text("⛔ Вы находитесь в бане")
+        return
+        
+    await db.add_medical_question(pool, user.id, question)
+    await update.message.reply_text("Твой вопрос записан и передан Виктору!")
+
+async def show_medical_question_interface(update: Update, context: ContextTypes.DEFAULT_TYPE, pool, current_index: int = 0, edit_message_id: int = None):
+    questions = await db.get_all_medical_questions(pool)
+    chat_id = update.effective_chat.id
+    
+    if not questions:
+        text = "🎉 **Вопросов пока нет или кончились!**"
+        if edit_message_id:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=edit_message_id, text=text, parse_mode="Markdown")
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+        return
+
+    # Зацикливаем индекс, если дошли до конца списка
+    if current_index >= len(questions) or current_index < 0:
+        current_index = 0
+        
+    q = questions[current_index]
+    asker_nick = await db.get_nickname(pool, q['user_id']) or "Аноним"
+    
+    text = (
+        f"🩺 **Вопрос №{current_index + 1} из {len(questions)}**\n"
+        f"👤 **От кого:** [{asker_nick}](tg://user?id={q['user_id']})\n"
+        f"❓ **Вопрос:** {q['question_text']}"
+    )
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("Ответить", callback_data=f"med_ans_{q['id']}_{current_index}"),
+            InlineKeyboardButton("Следующий вопрос", callback_data=f"med_next_{current_index + 1}")
+        ],
+        [
+            InlineKeyboardButton("Удалить ответ", callback_data=f"med_del_{q['id']}_{current_index}"),
+            InlineKeyboardButton("Бан", callback_data=f"med_ban_{q['id']}_{current_index}")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if edit_message_id:
+        try:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=edit_message_id, text=text, reply_markup=reply_markup, parse_mode="Markdown")
+        except Exception:
+            pass 
+    else:
+        await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode="Markdown")
+
+async def medical_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.from_user.id not in ALLOWED_MEDICS:
+        return
+
+    pool = context.bot_data.get('db_pool')
+    data = query.data
+    
+    if data.startswith("med_next_"):
+        next_index = int(data.split("_")[2])
+        await show_medical_question_interface(update, context, pool, current_index=next_index, edit_message_id=query.message.message_id)
+        
+    elif data.startswith("med_ans_"):
+        _, _, q_id, current_index = data.split("_")
+        q_id, current_index = int(q_id), int(current_index)
+        
+        q = await db.get_medical_question_by_id(pool, q_id)
+        if not q:
+            await query.message.edit_text("⚠️ На этот вопрос уже ответили или он был удален.")
+            return
+            
+        context.user_data['waiting_for_answer_to'] = {
+            "q_id": q_id,
+            "current_index": current_index,
+            "message_id": query.message.message_id
+        }
+        
+        asker_nick = await db.get_nickname(pool, q['user_id']) or "Аноним"
+        await query.message.edit_text(
+            f"✏️ **Пишем ответ для {asker_nick}:**\n"
+            f"» *{q['question_text']}*\n\n"
+            f"Введите текст ответа следующим сообщением или напишите `отмена` для возврата.",
+            parse_mode="Markdown"
+        )
+    elif data.startswith("med_del_"):
+        _, _, q_id, current_index = data.split("_")
+        q_id, current_index = int(q_id), int(current_index)
+        
+        q = await db.get_medical_question_by_id(pool, q_id)
+        if q:
+            user_id = q['user_id']
+            await db.delete_medical_question(pool, q_id)
+            try:
+                await context.bot.send_message(chat_id=user_id, text="Ваш вопрос удалён и не получил ответа")
+            except Exception as e:
+                print(f"Не удалось отправить уведомление об удалении пользователю {user_id}: {e}")
+                
+        await show_medical_question_interface(update, context, pool, current_index=current_index, edit_message_id=query.message.message_id)
+
+    elif data.startswith("med_ban_"):
+        _, _, q_id, current_index = data.split("_")
+        q_id, current_index = int(q_id), int(current_index)
+        
+        q = await db.get_medical_question_by_id(pool, q_id)
+        if q:
+            user_id = q['user_id']
+            await db.ban_user_medical(pool, user_id)
+            await db.delete_medical_question(pool, q_id)
+            try:
+                await context.bot.send_message(chat_id=user_id, text="Ваш вопрос удалён, и вы получили блокировку в медицинском модуле на 1 день.")
+            except Exception as e:
+                print(f"Не удалось отправить уведомление о бане пользователю {user_id}: {e}")
+                
+        await show_medical_question_interface(update, context, pool, current_index=current_index, edit_message_id=query.message.message_id)
+
+async def handle_medic_answer_text(update: Update, context: ContextTypes.DEFAULT_TYPE, pool, waiting_info: dict):
+    q_id = waiting_info['q_id']
+    current_index = waiting_info['current_index']
+    answer_text = update.message.text
+
+    q = await db.get_medical_question_by_id(pool, q_id)
+    if not q:
+        await update.message.reply_text("❌ Ошибка: вопрос не найден в базе данных.")
+        context.user_data.pop('waiting_for_answer_to', None)
+        return
+
+    user_id = q['user_id']
+    
+    try:
+        notification = (
+            f"🩺 **Поступил ответ от Виктора!**\n\n"
+            f"❓ **Твой вопрос:** {q['question_text']}\n"
+            f"💡 **Ответ:** {answer_text}"
+        )
+        await context.bot.send_message(chat_id=user_id, text=notification, parse_mode="Markdown")
+        user_sent = True
+    except Exception as e:
+        user_sent = False
+        print(f"Не удалось отправить ответ пользователю {user_id}: {e}")
+
+    await db.delete_medical_question(pool, q_id)
+    context.user_data.pop('waiting_for_answer_to', None)
+
+    if user_sent:
+        await update.message.reply_text("Ответ отправлен, вопрос удалён")
+    else:
+        await update.message.reply_text("⚠️ Вопрос удален, но не удалось доставить ответ (пользователь, скорее всего, заблокировал бота).")
+
+    # Показываем интерфейс со следующим вопросом (или обновленный список на той же позиции)
+    await show_medical_question_interface(update, context, pool, current_index=current_index)
+
+#-------------------------------------------------Стикеры----------------------------------------------------------------------
+
 async def handle_sticker_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.sticker.file_id == "CAACAgIAAxkBAAIB0GmprRn4W6u5b92a222Lm5mOPYPLAAKrmQAC9UXoS6VAy4587toFOgQ":
         try:
             await context.bot.set_message_reaction(chat_id=update.effective_chat.id, message_id=update.message.message_id, reaction=[ReactionTypeEmoji("❤️")])
         except: pass
+
+#-------------------------------------------------Свадьбы----------------------------------------------------------------------
 
 async def handle_marriage_command(update: Update, context: ContextTypes.DEFAULT_TYPE, pool):
     user = update.effective_user

@@ -89,6 +89,9 @@ async def get_nickname(pool, user_id: int):
         row = await conn.fetchrow("SELECT custom_nickname FROM users WHERE user_id = $1::BIGINT", user_id)
         return row['custom_nickname'] if row else None
 
+
+#--------------------------------Свадьбы-----------------------------------------------
+
 async def get_marriage(pool, user_id: int):
     async with pool.acquire() as conn:
         return await conn.fetchrow(
@@ -134,6 +137,8 @@ async def get_all_marriages(pool):
     async with pool.acquire() as conn:
         return await conn.fetch(query)
 
+#--------------------------------рул34-----------------------------------------------
+
 async def get_r34_count(pool):
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT value_int, last_update FROM bot_settings WHERE key = 'r34_requests_count'")
@@ -176,3 +181,48 @@ async def update_r34_last_time(pool, user_id: int):
             "UPDATE users SET last_r34_at = NOW() WHERE user_id = $1::BIGINT", 
             user_id
         )
+
+#--------------------------------Медицина-----------------------------------------------
+
+async def add_medical_question(pool, user_id: int, question: str):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO medical_questions (user_id, question_text) VALUES ($1, $2)",
+            user_id, question
+        )
+
+async def get_all_medical_questions(pool):
+    async with pool.acquire() as conn:
+        return await conn.fetch("SELECT id, user_id, question_text FROM medical_questions ORDER BY id ASC")
+
+async def get_medical_question_by_id(pool, q_id: int):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT id, user_id, question_text FROM medical_questions WHERE id = $1", q_id)
+
+async def delete_medical_question(pool, q_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM medical_questions WHERE id = $1", q_id)
+
+async def delete_medical_question(pool, q_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM medical_questions WHERE id = $1", q_id)
+
+async def ban_user_medical(pool, user_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO medical_bans (user_id, banned_until)
+            VALUES ($1, NOW() + INTERVAL '1 day')
+            ON CONFLICT (user_id) DO UPDATE 
+            SET banned_until = EXCLUDED.banned_until;
+            """,
+            user_id
+        )
+
+async def is_medical_banned(pool, user_id: int) -> bool:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT banned_until FROM medical_bans WHERE user_id = $1 AND banned_until > NOW()",
+            user_id
+        )
+        return row is not None

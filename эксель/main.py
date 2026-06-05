@@ -1,7 +1,8 @@
 ﻿import logging
-from telegram.ext import Application, MessageHandler, filters
+from telegram.ext import Application, MessageHandler, filters, CallbackQueryHandler
 from config import TOKEN
 import network 
+from handlers import medical_callback_handler
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
@@ -18,6 +19,8 @@ def main():
     )
 
     app.add_error_handler(network.error_handler)
+
+    app.add_handler(CallbackQueryHandler(medical_callback_handler))
 
     app.add_handler(MessageHandler(
         filters.TEXT | filters.Sticker.ALL, 
