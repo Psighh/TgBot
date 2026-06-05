@@ -44,7 +44,8 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
         await context.bot.send_message(chat_id=chat_id, text="хуй")
         await context.bot.send_sticker(chat_id=chat_id, sticker="CAACAgIAAxkBAAECgzRppxgMyw2pRRTuQE2ewtzhA2EDwwACFmkAAo7ZyEjGsk1U4P9r4zoE")
     #elif command == "кастом":
-    #   await context.bot.send_sticker(chat_id=-1002380022509, sticker="CAACAgIAAxkBAAECqyVpsyLE9BVggzEPYwRTVaBfsceDGQACwGcAAuu_kEgISLE2EPhp8ToE")
+        # -5160768325 -1002380022509
+     #  await context.bot.send_message(chat_id=-1002380022509, text="текст")
     elif command.startswith("медицина"):
         await handle_medical_question_command(update, context, pool, command)
     elif command.startswith("рул"):

@@ -203,10 +203,6 @@ async def delete_medical_question(pool, q_id: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM medical_questions WHERE id = $1", q_id)
 
-async def delete_medical_question(pool, q_id: int):
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM medical_questions WHERE id = $1", q_id)
-
 async def ban_user_medical(pool, user_id: int):
     async with pool.acquire() as conn:
         await conn.execute(
