@@ -27,6 +27,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="config.py" />
+    <Compile Include="dashboard.pyw" />
     <Compile Include="database.py" />
     <Compile Include="handlers.py" />
     <Compile Include="main.py" />

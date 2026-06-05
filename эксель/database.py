@@ -184,20 +184,20 @@ async def update_r34_last_time(pool, user_id: int):
 
 #--------------------------------Медицина-----------------------------------------------
 
-async def add_medical_question(pool, user_id: int, question: str):
+async def add_medical_question(pool, user_id: int, chat_id: int, question: str):
     async with pool.acquire() as conn:
         await conn.execute(
-            "INSERT INTO medical_questions (user_id, question_text) VALUES ($1, $2)",
-            user_id, question
+            "INSERT INTO medical_questions (user_id, chat_id, question_text) VALUES ($1, $2, $3)",
+            user_id, chat_id, question
         )
 
 async def get_all_medical_questions(pool):
     async with pool.acquire() as conn:
-        return await conn.fetch("SELECT id, user_id, question_text FROM medical_questions ORDER BY id ASC")
+        return await conn.fetch("SELECT id, user_id, chat_id, question_text FROM medical_questions ORDER BY id ASC")
 
 async def get_medical_question_by_id(pool, q_id: int):
     async with pool.acquire() as conn:
-        return await conn.fetchrow("SELECT id, user_id, question_text FROM medical_questions WHERE id = $1", q_id)
+        return await conn.fetchrow("SELECT id, user_id, chat_id, question_text FROM medical_questions WHERE id = $1", q_id)
 
 async def delete_medical_question(pool, q_id: int):
     async with pool.acquire() as conn:

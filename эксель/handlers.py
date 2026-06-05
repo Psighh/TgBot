@@ -110,6 +110,7 @@ async def handle_medic_private_message(update: Update, context: ContextTypes.DEF
 
 async def handle_medical_question_command(update: Update, context: ContextTypes.DEFAULT_TYPE, pool, command: str):
     user = update.effective_user
+    chat_id = update.effective_chat.id
     question = command[8:].strip()
     
     if not question:
@@ -125,7 +126,7 @@ async def handle_medical_question_command(update: Update, context: ContextTypes.
         await update.message.reply_text("⛔ Вы находитесь в бане")
         return
         
-    await db.add_medical_question(pool, user.id, question)
+    await db.add_medical_question(pool, user.id, chat_id, question)
     await update.message.reply_text("Твой вопрос записан и передан Виктору!")
 
 async def show_medical_question_interface(update: Update, context: ContextTypes.DEFAULT_TYPE, pool, current_index: int = 0, edit_message_id: int = None):
@@ -159,7 +160,7 @@ async def show_medical_question_interface(update: Update, context: ContextTypes.
             InlineKeyboardButton("Следующий вопрос", callback_data=f"med_next_{current_index + 1}")
         ],
         [
-            InlineKeyboardButton("Удалить ответ", callback_data=f"med_del_{q['id']}_{current_index}"),
+            InlineKeyboardButton("Удалить вопрос", callback_data=f"med_del_{q['id']}_{current_index}"),
             InlineKeyboardButton("Бан", callback_data=f"med_ban_{q['id']}_{current_index}")
         ]
     ]
@@ -203,12 +204,23 @@ async def medical_callback_handler(update: Update, context: ContextTypes.DEFAULT
         }
         
         asker_nick = await db.get_nickname(pool, q['user_id']) or "Аноним"
+
+        keyboard = [[InlineKeyboardButton("Отмена", callback_data=f"med_cancel_{current_index}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         await query.message.edit_text(
             f"✏️ **Пишем ответ для {asker_nick}:**\n"
             f"» *{q['question_text']}*\n\n"
-            f"Введите текст ответа следующим сообщением или напишите `отмена` для возврата.",
+            f"Введите текст ответа следующим сообщением",
+            reply_markup=reply_markup,
             parse_mode="Markdown"
         )
+    elif data.startswith("med_cancel_"):
+        current_index = int(data.split("_")[2])
+        
+        context.user_data.pop('waiting_for_answer_to', None)
+        
+        await show_medical_question_interface(update, context, pool, current_index=current_index, edit_message_id=query.message.message_id)
     elif data.startswith("med_del_"):
         _, _, q_id, current_index = data.split("_")
         q_id, current_index = int(q_id), int(current_index)
@@ -252,7 +264,8 @@ async def handle_medic_answer_text(update: Update, context: ContextTypes.DEFAULT
         return
 
     user_id = q['user_id']
-    
+    chat_id = q['chat_id']  
+
     try:
         notification = (
             f"🩺 **Поступил ответ от Виктора!**\n\n"
@@ -263,7 +276,21 @@ async def handle_medic_answer_text(update: Update, context: ContextTypes.DEFAULT
         user_sent = True
     except Exception as e:
         user_sent = False
-        print(f"Не удалось отправить ответ пользователю {user_id}: {e}")
+        print(f"Не удалось отправить ответ в ЛС пользователю {user_id}: {e}")
+
+    if chat_id and chat_id != user_id:
+        try:
+            asker_nick = await db.get_nickname(pool, user_id) or "Пользователь"
+            asker_link = f"[{asker_nick}](tg://user?id={user_id})"
+            
+            group_notification = (
+                f"🩺 **Виктор ответил на медицинский вопрос пользователя {asker_link}!**\n\n"
+                f"❓ **Вопрос:** {q['question_text']}\n"
+                f"💡 **Ответ:** {answer_text}"
+            )
+            await context.bot.send_message(chat_id=chat_id, text=group_notification, parse_mode="Markdown")
+        except Exception as e:
+            print(f"Не удалось отправить ответ в беседу {chat_id}: {e}")
 
     await db.delete_medical_question(pool, q_id)
     context.user_data.pop('waiting_for_answer_to', None)
@@ -271,9 +298,9 @@ async def handle_medic_answer_text(update: Update, context: ContextTypes.DEFAULT
     if user_sent:
         await update.message.reply_text("Ответ отправлен, вопрос удалён")
     else:
-        await update.message.reply_text("⚠️ Вопрос удален, но не удалось доставить ответ (пользователь, скорее всего, заблокировал бота).")
+        await update.message.reply_text("⚠️ Не удалось доставить ответ в ЛС (Видимо, у пользователя нет ЛС с ботом.)")
 
-    # Показываем интерфейс со следующим вопросом (или обновленный список на той же позиции)
+    # Показываем интерфейс со следующим вопросом
     await show_medical_question_interface(update, context, pool, current_index=current_index)
 
 #-------------------------------------------------Стикеры----------------------------------------------------------------------
