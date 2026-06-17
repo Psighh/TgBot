@@ -4,6 +4,13 @@ import sys
 import flet as ft
 import aiohttp
 
+ft.colors = ft.Colors
+ft.margin = ft.Margin
+ft.padding = ft.Padding
+ft.border_radius = ft.BorderRadius
+ft.alignment = ft.Alignment
+ft.icons = ft.Icons
+
 try:
     from config import TOKEN, DB_CONFIG
 except ImportError:
@@ -27,23 +34,23 @@ class BotDashboardFlet:
         self.page.padding = 15
 
         # --- Кнопки управления (Верхняя панель) ---
-        self.btn_start = ft.ElevatedButton(
-            text="▶ Старт",
+        self.btn_start = ft.Button(
+            content=ft.Text("▶ Старт"),
             bgcolor=ft.colors.GREEN_700,
             color=ft.colors.WHITE,
             on_click=self.start_bot,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6))
         )
-        self.btn_stop = ft.ElevatedButton(
-            text="⏹ Стоп",
+        self.btn_stop = ft.Button(
+            content=ft.Text("⏹ Стоп"),
             bgcolor=ft.colors.GREY_800,
             color=ft.colors.GREY_500,
             disabled=True,
             on_click=self.stop_bot,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6))
         )
-        self.btn_restart = ft.ElevatedButton(
-            text="🔄 Перезапуск",
+        self.btn_restart = ft.Button(
+            content=ft.Text("🔄 Перезапуск"),
             bgcolor=ft.colors.GREY_800,
             color=ft.colors.GREY_500,
             disabled=True,
@@ -65,7 +72,7 @@ class BotDashboardFlet:
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN
             ),
-            bgcolor=ft.colors.SURFACE_VARIANT,
+            bgcolor="#202124",
             padding=12,
             border_radius=8,
             margin=ft.margin.only(bottom=10)
@@ -115,8 +122,8 @@ class BotDashboardFlet:
 
         self.lbl_send_status = ft.Text("", size=14)
 
-        btn_send = ft.ElevatedButton(
-            text="Отправить сообщение",
+        btn_send = ft.Button(
+            content=ft.Text("Отправить сообщение"),
             icon=ft.icons.SEND,
             bgcolor=ft.colors.BLUE_600,
             color=ft.colors.WHITE,
@@ -133,7 +140,7 @@ class BotDashboardFlet:
                 spacing=2
             ),
             padding=8,
-            bgcolor=ft.colors.SURFACE_VARIANT,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
             border_radius=6,
         )
 
@@ -180,7 +187,7 @@ class BotDashboardFlet:
                 ),
             ],
             on_change=lambda e: self.switch_tab(e.control.selected_index, console_view, bot_view),
-            bgcolor=ft.colors.BACKGROUND
+            bgcolor=ft.Colors.SURFACE
         )
 
         # Сборка основного макета
@@ -193,7 +200,7 @@ class BotDashboardFlet:
             expand=True
         )
 
-        await self.page.add_async(toolbar, main_layout)
+        self.page.add(toolbar, main_layout)
         
         # Первичная фоновая загрузка чатов
         asyncio.create_task(self.load_db_chats(None))
@@ -213,16 +220,16 @@ class BotDashboardFlet:
 
     def set_buttons_state(self, start=False, stop=True, restart=True):
         self.btn_start.disabled = start
-        self.btn_start.bgcolor = ft.colors.GREY_800 if start else ft.colors.GREEN_700
-        self.btn_start.color = ft.colors.GREY_500 if start else ft.colors.WHITE
+        self.btn_start.bgcolor = ft.Colors.GREY_800 if start else ft.Colors.GREEN_700
+        self.btn_start.color = ft.Colors.GREY_500 if start else ft.Colors.WHITE
 
         self.btn_stop.disabled = stop
-        self.btn_stop.bgcolor = ft.colors.GREY_800 if stop else ft.colors.RED_700
-        self.btn_stop.color = ft.colors.GREY_500 if stop else ft.colors.WHITE
+        self.btn_stop.bgcolor = ft.Colors.GREY_800 if stop else ft.Colors.RED_700
+        self.btn_stop.color = ft.Colors.GREY_500 if stop else ft.Colors.WHITE
 
         self.btn_restart.disabled = restart
-        self.btn_restart.bgcolor = ft.colors.GREY_800 if restart else ft.colors.BLUE_700
-        self.btn_restart.color = ft.colors.GREY_500 if restart else ft.colors.WHITE
+        self.btn_restart.bgcolor = ft.Colors.GREY_800 if restart else ft.Colors.BLUE_700
+        self.btn_restart.color = ft.Colors.GREY_500 if restart else ft.Colors.WHITE
         
         self.page.update()
 
@@ -232,8 +239,8 @@ class BotDashboardFlet:
 
         self.set_buttons_state(start=True, stop=True, restart=True)
         self.lbl_status.value = "Статус: Запуск..."
-        self.lbl_status.color = ft.colors.AMBER_400
-        self.log("[СИСТЕМА] Запуск бота...", color=ft.colors.BLUE_200)
+        self.lbl_status.color = ft.Colors.AMBER_400
+        self.log("[СИСТЕМА] Запуск бота...", color=ft.Colors.BLUE_200)
 
         try:
             current_env = os.environ.copy()
@@ -249,13 +256,13 @@ class BotDashboardFlet:
 
             self.set_buttons_state(start=True, stop=False, restart=False)
             self.lbl_status.value = "Статус: Работает"
-            self.lbl_status.color = ft.colors.GREEN_400
+            self.lbl_status.color = ft.Colors.GREEN_400
             self.page.update()
 
             self.log_task = asyncio.create_task(self.stream_logs())
 
         except Exception as ex:
-            self.log(f"[ОШИБКА ЗАПУСКА] Не удалось запустить процесс:\n{str(ex)}", color=ft.colors.RED_400)
+            self.log(f"[ОШИБКА ЗАПУСКА] Не удалось запустить процесс:\n{str(ex)}", color=ft.Colors.RED_400)
             await self.reset_ui()
 
     async def stream_logs(self):
@@ -272,7 +279,7 @@ class BotDashboardFlet:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            self.log(f"\n[ОШИБКА ЧТЕНИЯ ЛОГОВ]: {str(e)}", color=ft.colors.RED_400)
+            self.log(f"\n[ОШИБКА ЧТЕНИЯ ЛОГОВ]: {str(e)}", color=ft.Colors.RED_400)
             await self.handle_process_exit()
 
     async def handle_process_exit(self):
@@ -289,11 +296,11 @@ class BotDashboardFlet:
         
         self.set_buttons_state(start=True, stop=True, restart=True)
         self.lbl_status.value = "Статус: Остановка..."
-        self.lbl_status.color = ft.colors.RED_ACCENT
+        self.lbl_status.color = ft.Colors.RED_ACCENT
         self.page.update()
         
         try:
-            self.log("\n[СИСТЕМА] Принудительная остановка бота...\n", color=ft.colors.RED_400)
+            self.log("\n[СИСТЕМА] Принудительная остановка бота...\n", color=ft.Colors.RED_400)
             
             if self.log_task and not self.log_task.done():
                 self.log_task.cancel()
@@ -306,7 +313,7 @@ class BotDashboardFlet:
             except Exception:
                 pass
         except Exception as ex:
-            self.log(f"[СИСТЕМА] Исключение при остановке: {ex}", color=ft.colors.RED_400)
+            self.log(f"[СИСТЕМА] Исключение при остановке: {ex}", color=ft.Colors.RED_400)
         finally:
             await self.reset_ui()
 
@@ -317,11 +324,11 @@ class BotDashboardFlet:
         self.is_restarting = True
         self.set_buttons_state(start=True, stop=True, restart=True)
         self.lbl_status.value = "Статус: Перезапуск..."
-        self.lbl_status.color = ft.colors.BLUE_400
+        self.lbl_status.color = ft.Colors.BLUE_400
         self.page.update()
         
         try:
-            self.log("\n[СИСТЕМА] Инициирован безопасный перезапуск...\n", color=ft.colors.BLUE_200)
+            self.log("\n[СИСТЕМА] Инициирован безопасный перезапуск...\n", color=ft.Colors.BLUE_200)
             
             if self.log_task and not self.log_task.done():
                 self.log_task.cancel()
@@ -334,7 +341,7 @@ class BotDashboardFlet:
             except Exception:
                 pass
         except Exception as ex:
-            self.log(f"[СИСТЕМА] Ошибка при перезапуске: {ex}", color=ft.colors.RED_400)
+            self.log(f"[СИСТЕМА] Ошибка при перезапуске: {ex}", color=ft.Colors.RED_400)
         finally:
             self.is_restarting = False
             self.process = None
@@ -345,7 +352,7 @@ class BotDashboardFlet:
         self.is_restarting = False
         self.set_buttons_state(start=False, stop=True, restart=True)
         self.lbl_status.value = "Статус: Выключен"
-        self.lbl_status.color = ft.colors.AMBER_400
+        self.lbl_status.color = ft.Colors.AMBER_400
         self.page.update()
 
     # --- Функционал вкладки Бот ---
@@ -393,25 +400,25 @@ class BotDashboardFlet:
 
         if not chat_id:
             self.lbl_send_status.value = "❌ Укажите ID или выберите чат!"
-            self.lbl_send_status.color = ft.colors.RED_400
+            self.lbl_send_status.color = ft.Colors.RED_400
             self.page.update()
             return
 
         text = self.txt_message.value.strip()
         if not text:
             self.lbl_send_status.value = "❌ Введите текст сообщения!"
-            self.lbl_send_status.color = ft.colors.RED_400
+            self.lbl_send_status.color = ft.Colors.RED_400
             self.page.update()
             return
 
         if not TOKEN:
             self.lbl_send_status.value = "❌ В config.py отсутствует TOKEN!"
-            self.lbl_send_status.color = ft.colors.RED_400
+            self.lbl_send_status.color = ft.Colors.RED_400
             self.page.update()
             return
 
         self.lbl_send_status.value = "⏳ Отправка..."
-        self.lbl_send_status.color = ft.colors.AMBER_400
+        self.lbl_send_status.color = ft.Colors.AMBER_400
         self.page.update()
 
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -421,20 +428,20 @@ class BotDashboardFlet:
                 async with session.post(url, json=payload) as resp:
                     if resp.status == 200:
                         self.lbl_send_status.value = "✅ Отправлено успешно!"
-                        self.lbl_send_status.color = ft.colors.GREEN_400
+                        self.lbl_send_status.color = ft.Colors.GREEN_400
                         self.txt_message.value = ""
                     else:
                         res_text = await resp.text()
                         self.lbl_send_status.value = f"❌ Ошибка API: {resp.status}"
-                        self.lbl_send_status.color = ft.colors.RED_400
-                        self.log(f"[ОШИБКА ТЕЛЕГРАМА] API вернул: {res_text}", color=ft.colors.RED_400)
+                        self.lbl_send_status.color = ft.Colors.RED_400
+                        self.log(f"[ОШИБКА ТЕЛЕГРАМА] API вернул: {res_text}", color=ft.Colors.RED_400)
         except Exception as ex:
             self.lbl_send_status.value = "❌ Ошибка сети"
-            self.lbl_send_status.color = ft.colors.RED_400
-            self.log(f"[ОШИБКА СЕТИ ПАНЕЛИ]: {str(ex)}", color=ft.colors.RED_400)
+            self.lbl_send_status.color = ft.Colors.RED_400
+            self.log(f"[ОШИБКА СЕТИ ПАНЕЛИ]: {str(ex)}", color=ft.Colors.RED_400)
         
         self.page.update()
 
 if __name__ == "__main__":
     dashboard = BotDashboardFlet()
-    ft.app(target=dashboard.main)
+    ft.run(dashboard.main)
