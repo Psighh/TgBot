@@ -3,8 +3,10 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
-# My Secret Configuration444
+# My Configuration
 config.py
+*.sln
+*.pyproj
 
 # User-specific files
 *.rsuser
