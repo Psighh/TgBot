@@ -79,8 +79,7 @@ async def process_gv_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
         success, res = await db.get_user_info(pool, update.effective_user.id)
         await update.message.reply_text(res, parse_mode="Markdown")
     elif command == "топ":
-        res = await db.get_top_users(pool)
-        await update.message.reply_text(res, parse_mode="Markdown", disable_web_page_preview=True)
+        await handle_top_command(update, context)
     #elif command in ['секс', 'выебать', 'порно']:
     #   await services.handle_intim_command(update, pool)
     elif command == "брак":
@@ -136,3 +135,36 @@ async def handle_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     
     await update.message.reply_text(help_text, parse_mode="Markdown")
+
+async def handle_top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    pool = context.bot_data.get('db_pool')
+    rows = await db.get_top_users(pool)
+    
+    if rows is None:
+        await update.message.reply_text("🚨 Произошла ошибка при получении списка лидеров.")
+        return
+        
+    if not rows:
+        await update.message.reply_text("📈 Список пуст. Никто еще не зарегистрировался!")
+        return
+
+    # Отправляем сообщение-заглушку, пока Pillow собирает картинку
+    status_message = await update.message.reply_text("🔄 Собираю красивый топ...")
+
+    try:
+        # Генерируем картинку через наш сервис
+        image_stream = await services.create_top_image(rows)
+        
+        # Отправляем её пользователю
+        await update.message.reply_photo(
+            photo=image_stream,
+            caption="🏆 **Актуальный топ пользователей по рейтингу:**",
+            parse_mode="Markdown"
+        )
+        
+        # Удаляем заглушку
+        await status_message.delete()
+        
+    except Exception as e:
+        print(f"Ошибка при отправке топ-картинки: {e}")
+        await status_message.edit_text("🚨 Не удалось сгенерировать изображение топа.")

@@ -6,6 +6,10 @@ from datetime import date
 from config import R34_USER_ID, R34_API_KEY, WEATHER_API_KEY, MAX_DAILY_LIMIT
 import database as db
 import html
+import io
+import os
+from PIL import Image, ImageDraw, ImageFont
+from config import OWNER_USER_ID
 
 logger = logging.getLogger(__name__)
 total_requests_count = 0
@@ -172,3 +176,91 @@ async def handle_intim_command(update, pool):
 
     text = f"👄 {sender_link} {random.choice(intim_text)} {target_link}! ✨"
     await update.message.reply_text(text, parse_mode="Markdown")
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+async def create_top_image(rows, admin_ids=None) -> io.BytesIO:
+    
+    admin_ids = [OWNER_USER_ID]
+
+    template_path = os.path.join(BASE_DIR, "assets", "top_template.png") 
+    img = Image.open(template_path)
+    draw = ImageDraw.Draw(img)
+    
+    font_path = os.path.join(BASE_DIR, "assets", "PressStart2P-Regular.ttf")
+    font_path2 = os.path.join(BASE_DIR, "assets", "Russische Elsevier.ttf")
+    
+    try:
+        title_font = ImageFont.truetype(font_path, 23)  
+        font = ImageFont.truetype(font_path2, 18)        
+    except IOError:
+        title_font = ImageFont.load_default()
+        font = ImageFont.load_default()
+
+    title_text = "Топ пользователей чата"
+    title_width = draw.textlength(title_text, font=title_font)
+    title_x = int((img.width - title_width) // 2)
+    title_y = 40  
+    draw.text((title_x, title_y), title_text, fill="lime", font=title_font)
+
+    # Настройки для списка игроков
+    start_x = 40      
+    start_y = 140      
+    line_height = 55   
+
+    for i, row in enumerate(rows, start=1):
+        user_id = row.get('user_id') 
+        nickname = row['custom_nickname']
+        rang = row['rang']
+        rating = row['rating']
+        
+        text = f"{i}. {nickname} [{rang}] — {rating} ммр"
+        current_y = start_y + (i - 1) * line_height
+        
+        # Рисуем строку игрока
+        draw.text((start_x, current_y), text, fill="red", font=font, stroke_width=0.5, stroke_fill="red")
+        
+        text_width = draw.textlength(text, font=font)
+        current_icon_x = int(start_x + text_width + 8)
+        
+        # --- 1. ОТРИСОВКА МЕДАЛИ ---
+        rang_base = rang.split()[0] if rang else "Рекрут"
+        medal_path = os.path.join(BASE_DIR, "assets", "medals", f"{rang_base}.png")
+        
+        if os.path.exists(medal_path):
+            try:
+                medal = Image.open(medal_path)
+                medal_size = (30, 30)
+                if medal.size != medal_size:
+                    medal = medal.resize(medal_size, Image.Resampling.LANCZOS)
+                
+                medal_y = current_y - 4 
+                img.paste(medal, (current_icon_x, medal_y), medal)
+                
+                current_icon_x += 35
+            except Exception as e:
+                print(f"Не удалось отрисовать медаль для {rang_base}: {e}")
+
+        # --- 2. ОТРИСОВКА ЗНАЧКА АДМИНИСТРАТОРА ---
+        if user_id in admin_ids:
+            admin_icon_path = os.path.join(BASE_DIR, "assets", "medals", "Админ.png")
+            if os.path.exists(admin_icon_path):
+                try:
+                    admin_icon = Image.open(admin_icon_path)
+                    admin_size = (30, 30)  
+                    if admin_icon.size != admin_size:
+                        admin_icon = admin_icon.resize(admin_size, Image.Resampling.LANCZOS)
+                    
+                    admin_y = current_y - 4
+                    img.paste(admin_icon, (current_icon_x, admin_y), admin_icon)
+                    
+                    current_icon_x += 35
+                except Exception as e:
+                    print(f"Не удалось отрисовать значок админа: {e}")
+
+    image_buffer = io.BytesIO()
+    image_buffer.name = 'top_leaderboard.png'
+    img.save(image_buffer, format='PNG')
+    image_buffer.seek(0)
+    
+    return image_buffer

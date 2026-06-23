@@ -36,14 +36,10 @@ async def get_top_users(pool):
     try:
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT user_id, custom_nickname, rang, rating FROM users ORDER BY rating DESC LIMIT 10")
-            if not rows: return "📈 Список пуст. Никто еще не зарегистрировался!"
-            text = "🏆 **Топ пользователей по рейтингу:**\n\n"
-            for i, row in enumerate(rows, start=1):
-                user_link = f"[{row['custom_nickname']}](tg://user?id={row['user_id']})"
-                text += f"{i}. {user_link} [[{row['rang']}]] — {row['rating']} ммр.\n"
-            return text
+            return rows if rows else []
     except Exception as e:
-        return "🚨 Произошла ошибка при получении списка лидеров."
+        logger.error(f"Ошибка в get_top_users: {e}")
+        return None
 
 async def register_user(pool, user, nickname: str):
     if not nickname: return False, "❌ Введи ник! напрмер: адскийДрочила228"
