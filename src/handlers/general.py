@@ -149,7 +149,7 @@ async def handle_top_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     # Отправляем сообщение-заглушку, пока Pillow собирает картинку
-    status_message = await update.message.reply_text("🔄 Собираю красивый топ...")
+    status_message = await update.message.reply_text("🔄 Собираю топ...")
 
     try:
         # Генерируем картинку через наш сервис

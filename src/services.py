@@ -180,33 +180,32 @@ async def handle_intim_command(update, pool):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 async def create_top_image(rows, admin_ids=None) -> io.BytesIO:
-    
+    """
+    Генерирует изображение лидерборда на основе чистого шаблона.
+    Цвета: ники — белые, ранги и ммр — золотые.
+    """
+    # Если список админов не передан, берем по умолчанию OWNER_USER_ID
     admin_ids = [OWNER_USER_ID]
 
+    # Путь к шаблону top_template.png
     template_path = os.path.join(BASE_DIR, "assets", "top_template.png") 
     img = Image.open(template_path)
     draw = ImageDraw.Draw(img)
     
-    font_path = os.path.join(BASE_DIR, "assets", "PressStart2P-Regular.ttf")
-    font_path2 = os.path.join(BASE_DIR, "assets", "Russische Elsevier.ttf")
+    font_path_regular = os.path.join(BASE_DIR, "assets", "PoppinsCyr-Regular.otf")
     
     try:
-        title_font = ImageFont.truetype(font_path, 23)  
-        font = ImageFont.truetype(font_path2, 18)        
+        font = ImageFont.truetype(font_path_regular, 25)   
     except IOError:
-        title_font = ImageFont.load_default()
+        logger.warning("Не удалось найти шрифт Poppins-Regular.ttf в папки assets. Используется стандартный.")
         font = ImageFont.load_default()
 
-    title_text = "Топ пользователей чата"
-    title_width = draw.textlength(title_text, font=title_font)
-    title_x = int((img.width - title_width) // 2)
-    title_y = 40  
-    draw.text((title_x, title_y), title_text, fill="lime", font=title_font)
+    start_x = 80      # Отступ слева 
+    start_y = 275     # Смещение первой строчки вниз
+    line_height = 65  # Расстояние между строками топа
 
-    # Настройки для списка игроков
-    start_x = 40      
-    start_y = 140      
-    line_height = 55   
+    color_white = "white"
+    color_gold = "gold"
 
     for i, row in enumerate(rows, start=1):
         user_id = row.get('user_id') 
@@ -214,50 +213,72 @@ async def create_top_image(rows, admin_ids=None) -> io.BytesIO:
         rang = row['rang']
         rating = row['rating']
         
-        text = f"{i}. {nickname} [{rang}] — {rating} ммр"
+        # Формируем кусочки текста для раздельной раскраски
+        idx_text = f"{i}. "
+        nick_text = f"{nickname} "
+        rang_text = f"[{rang}] "
+        mmr_text = f"— {rating} ммр"
+        
         current_y = start_y + (i - 1) * line_height
+        current_x = start_x
         
-        # Рисуем строку игрока
-        draw.text((start_x, current_y), text, fill="red", font=font, stroke_width=0.5, stroke_fill="red")
+        # 1. Рисуем Номер позиции (Белый)
+        draw.text((current_x, current_y), idx_text, fill=color_white, font=font)
+        current_x += draw.textlength(idx_text, font=font)
         
-        text_width = draw.textlength(text, font=font)
-        current_icon_x = int(start_x + text_width + 8)
+        # 2. Рисуем Никнейм (Белый)
+        draw.text((current_x, current_y), nick_text, fill=color_white, font=font)
+        current_x += draw.textlength(nick_text, font=font)
         
-        # --- 1. ОТРИСОВКА МЕДАЛИ ---
+        # 3. Рисуем Ранг (Золотой)
+        draw.text((current_x, current_y), rang_text, fill=color_gold, font=font)
+        current_x += draw.textlength(rang_text, font=font)
+        
+        # 4. Рисуем ММР (Золотой)
+        draw.text((current_x, current_y), mmr_text, fill=color_gold, font=font)
+        current_x += draw.textlength(mmr_text, font=font)
+        
+        # Координата X для первой иконки (с небольшим отступом от текста)
+        current_icon_x = int(current_x + 12)
+        icon_y = current_y - 6  # Центрирование иконок относительно базовой линии текста
+        
+        # --- БЛОК 1: ОТРИСОВКА МЕДАЛИ РАНГА ---
         rang_base = rang.split()[0] if rang else "Рекрут"
         medal_path = os.path.join(BASE_DIR, "assets", "medals", f"{rang_base}.png")
         
         if os.path.exists(medal_path):
             try:
                 medal = Image.open(medal_path)
-                medal_size = (30, 30)
+                medal_size = (32, 32)  # Оптимальный размер медалей
                 if medal.size != medal_size:
                     medal = medal.resize(medal_size, Image.Resampling.LANCZOS)
                 
-                medal_y = current_y - 4 
-                img.paste(medal, (current_icon_x, medal_y), medal)
-                
-                current_icon_x += 35
+                img.paste(medal, (current_icon_x, icon_y), medal)
+                current_icon_x += 38  # Сдвигаем позицию для следующей иконки
             except Exception as e:
-                print(f"Не удалось отрисовать медаль для {rang_base}: {e}")
+                if 'logger' in globals():
+                    logger.error(f"Ошибка отрисовки медали {rang_base}: {e}")
+                else:
+                    print(f"Ошибка отрисовки медали {rang_base}: {e}")
 
-        # --- 2. ОТРИСОВКА ЗНАЧКА АДМИНИСТРАТОРА ---
+        # --- БЛОК 2: ОТРИСОВКА ЗНАЧКА АДМИНИСТРАТОРА (ЛЯМБДЫ) ---
         if user_id in admin_ids:
             admin_icon_path = os.path.join(BASE_DIR, "assets", "medals", "Админ.png")
             if os.path.exists(admin_icon_path):
                 try:
                     admin_icon = Image.open(admin_icon_path)
-                    admin_size = (30, 30)  
+                    admin_size = (32, 32)  
                     if admin_icon.size != admin_size:
                         admin_icon = admin_icon.resize(admin_size, Image.Resampling.LANCZOS)
                     
-                    admin_y = current_y - 4
-                    img.paste(admin_icon, (current_icon_x, admin_y), admin_icon)
-                    
-                    current_icon_x += 35
+                    img.paste(admin_icon, (current_icon_x, icon_y), admin_icon)
                 except Exception as e:
-                    print(f"Не удалось отрисовать значок админа: {e}")
+                    if 'logger' in globals():
+                        logger.error(f"Ошибка отрисовки значка админа: {e}")
+                    else:
+                        print(f"Ошибка отрисовки значка админа: {e}")
 
+    # Сохранение готового изображения в буфер для отправки в Telegram
     image_buffer = io.BytesIO()
     image_buffer.name = 'top_leaderboard.png'
     img.save(image_buffer, format='PNG')
