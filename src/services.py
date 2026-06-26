@@ -182,7 +182,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 async def create_top_image(rows, admin_ids=None) -> io.BytesIO:
     """
     Генерирует изображение лидерборда на основе чистого шаблона.
-    Цвета: ники — белые, ранги и ммр — золотые.
+    Цвета: ТОП-1 (Золото), ТОП-2 (Серебро), ТОП-3 (Медь). ТОП 4-10 (Белый).
+    Ранги и ММР у всех позиций — бирюзовые. ТОП 1-3 выделены жирным.
     """
     # Если список админов не передан, берем по умолчанию OWNER_USER_ID
     admin_ids = [OWNER_USER_ID]
@@ -200,12 +201,17 @@ async def create_top_image(rows, admin_ids=None) -> io.BytesIO:
         logger.warning("Не удалось найти шрифт Poppins-Regular.ttf в папки assets. Используется стандартный.")
         font = ImageFont.load_default()
 
-    start_x = 80      # Отступ слева 
-    start_y = 275     # Смещение первой строчки вниз
-    line_height = 65  # Расстояние между строками топа
+    # Исходные отступы и размеры (оставлены без изменений)
+    start_x = 80      
+    start_y = 275     
+    line_height = 65  
 
+    # Палитра цветов
     color_white = "white"
     color_gold = "gold"
+    color_silver = "#B5B8B1"     # Насыщенный серебряный
+    color_bronze = "#CD7F32"     # Медный / Бронзовый
+    color_turquoise = "#00E5FF"  # Яркий бирюзовый
 
     for i, row in enumerate(rows, start=1):
         user_id = row.get('user_id') 
@@ -222,20 +228,34 @@ async def create_top_image(rows, admin_ids=None) -> io.BytesIO:
         current_y = start_y + (i - 1) * line_height
         current_x = start_x
         
-        # 1. Рисуем Номер позиции (Белый)
-        draw.text((current_x, current_y), idx_text, fill=color_white, font=font)
+        # Динамически определяем цвет ника/номера и толщину шрифта (жирность)
+        if i == 1:
+            main_color = color_gold
+            stroke = 1
+        elif i == 2:
+            main_color = color_silver
+            stroke = 1
+        elif i == 3:
+            main_color = color_bronze
+            stroke = 1
+        else:
+            main_color = color_white
+            stroke = 0
+        
+        # 1. Рисуем Номер позиции
+        draw.text((current_x, current_y), idx_text, fill=main_color, font=font, stroke_width=stroke, stroke_fill=main_color)
         current_x += draw.textlength(idx_text, font=font)
         
-        # 2. Рисуем Никнейм (Белый)
-        draw.text((current_x, current_y), nick_text, fill=color_white, font=font)
+        # 2. Рисуем Никнейм
+        draw.text((current_x, current_y), nick_text, fill=main_color, font=font, stroke_width=stroke, stroke_fill=main_color)
         current_x += draw.textlength(nick_text, font=font)
         
-        # 3. Рисуем Ранг (Золотой)
-        draw.text((current_x, current_y), rang_text, fill=color_gold, font=font)
+        # 3. Рисуем Ранг (Бирюзовый для всех, жирный для 1-3 мест)
+        draw.text((current_x, current_y), rang_text, fill=color_turquoise, font=font, stroke_width=stroke, stroke_fill=color_turquoise)
         current_x += draw.textlength(rang_text, font=font)
         
-        # 4. Рисуем ММР (Золотой)
-        draw.text((current_x, current_y), mmr_text, fill=color_gold, font=font)
+        # 4. Рисуем ММР (Бирюзовый для всех, жирный для 1-3 мест)
+        draw.text((current_x, current_y), mmr_text, fill=color_turquoise, font=font, stroke_width=stroke, stroke_fill=color_turquoise)
         current_x += draw.textlength(mmr_text, font=font)
         
         # Координата X для первой иконки (с небольшим отступом от текста)
