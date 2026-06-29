@@ -46,7 +46,8 @@ async def custom_command_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     # Начисление MMR за обычные сообщения
     if pool:
-        await db.give_mmr(pool, update.effective_user.id, context, update.effective_chat.id, 1)
+        current_username = f"@{user.username}" if user.username else "NoUsername"
+        await db.give_mmr(pool, user.id, context, chat.id, 1, current_username)
 
     message = update.message.text
     if message.lower().startswith("гв "):

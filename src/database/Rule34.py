@@ -11,7 +11,7 @@ async def get_r34_count(pool):
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT value_int, last_update FROM bot_settings WHERE key = 'r34_requests_count'")
         
-        if row['last_update'] != date.today():
+        if row['last_update'].date() != date.today():
             await conn.execute(
                 "UPDATE bot_settings SET value_int = 0, last_update = CURRENT_DATE WHERE key = 'r34_requests_count'"
             )

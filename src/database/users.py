@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-async def give_mmr(pool, user_id: int, context, chat_id: int, amount: int = 1):
+async def give_mmr(pool, user_id: int, context, chat_id: int, amount: int = 1, tg_username: str = "NoUsername"):
     try:
         async with pool.acquire() as conn:
             current_data = await conn.fetchrow(
@@ -18,7 +18,14 @@ async def give_mmr(pool, user_id: int, context, chat_id: int, amount: int = 1):
             new_rang = calculate_rang(new_mmr)
             nickname = current_data['custom_nickname']
 
-            await conn.execute("UPDATE users SET rating = $1, rang = $2 WHERE user_id = $3", new_mmr, new_rang, user_id)
+            await conn.execute(
+                """
+                UPDATE users 
+                SET rating = $1, rang = $2, username = $3 
+                WHERE user_id = $4
+                """, 
+                new_mmr, new_rang, tg_username, user_id
+            )
             
             if old_rang != new_rang:
                 user_link = f"[{nickname}](tg://user?id={user_id})"
